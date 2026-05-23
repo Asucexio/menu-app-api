@@ -3,16 +3,26 @@ import { supabaseAdmin } from '../lib/supabaseClient.js';
 // ── Sign Up ──────────────────────────────────────────────────
 export const signUp = async ({ email, password, full_name }) => {
   if (!email || !password || !full_name)
-    throw Object.assign(new Error('email, password and full_name are required'), { status: 400 });
+    throw Object.assign(
+      new Error('email, password and full_name are required'),
+      { status: 400 }
+    );
 
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true, // auto-confirm (remove if you want email verification)
+    email_confirm: true,
     user_metadata: { full_name },
   });
 
   if (error) throw Object.assign(new Error(error.message), { status: 400 });
+
+  // manually create profile row in case trigger didn't fire
+  await supabaseAdmin.from('profiles').upsert({
+    id: data.user.id,
+    email: data.user.email,
+    full_name,
+  }, { onConflict: 'id' });
 
   return {
     message: 'Account created successfully',
@@ -21,35 +31,30 @@ export const signUp = async ({ email, password, full_name }) => {
 };
 
 // ── Sign In ──────────────────────────────────────────────────
-// We sign in by calling Supabase Auth REST directly
-// so we can return the access_token to the client
 export const signIn = async ({ email, password }) => {
   if (!email || !password)
-    throw Object.assign(new Error('email and password are required'), { status: 400 });
+    throw Object.assign(
+      new Error('email and password are required'),
+      { status: 400 }
+    );
 
-  const res = await fetch(
-    `${process.env.SUPABASE_URL}/auth/v1/token?grant_type=password`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: process.env.SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ email, password }),
-    }
-  );
+  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-  const data = await res.json();
-  if (!res.ok) throw Object.assign(new Error(data.error_description || 'Login failed'), { status: 401 });
+  if (error) throw Object.assign(new Error(error.message), { status: 401 });
+
+  const full_name = data.user.user_metadata?.full_name || '';
 
   return {
-    access_token:  data.access_token,   // JWT — send in Authorization header for every request
-    refresh_token: data.refresh_token,  // use to get a new access_token when it expires
-    expires_in:    data.expires_in,
+    access_token:  data.session.access_token,
+    refresh_token: data.session.refresh_token,
+    expires_in:    data.session.expires_in,
     user: {
       id:        data.user.id,
       email:     data.user.email,
-      full_name: data.user.user_metadata?.full_name,
+      full_name,
     },
   };
 };
@@ -59,25 +64,16 @@ export const refreshToken = async (refresh_token) => {
   if (!refresh_token)
     throw Object.assign(new Error('refresh_token is required'), { status: 400 });
 
-  const res = await fetch(
-    `${process.env.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: process.env.SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ refresh_token }),
-    }
-  );
+  const { data, error } = await supabaseAdmin.auth.refreshSession({
+    refresh_token,
+  });
 
-  const data = await res.json();
-  if (!res.ok) throw Object.assign(new Error(data.error_description || 'Token refresh failed'), { status: 401 });
+  if (error) throw Object.assign(new Error(error.message), { status: 401 });
 
   return {
-    access_token:  data.access_token,
-    refresh_token: data.refresh_token,
-    expires_in:    data.expires_in,
+    access_token:  data.session.access_token,
+    refresh_token: data.session.refresh_token,
+    expires_in:    data.session.expires_in,
   };
 };
 
@@ -89,14 +85,29 @@ export const getProfile = async (userId) => {
     .eq('id', userId)
     .single();
 
-  if (error) throw Object.assign(new Error('Profile not found'), { status: 404 });
+  if (error || !data) {
+    // profile row might not exist yet — create it
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (!userData?.user) throw Object.assign(new Error('User not found'), { status: 404 });
+
+    const newProfile = {
+      id: userId,
+      email: userData.user.email,
+      full_name: userData.user.user_metadata?.full_name || '',
+    };
+    await supabaseAdmin.from('profiles').upsert(newProfile, { onConflict: 'id' });
+    return newProfile;
+  }
+
   return data;
 };
 
 // ── Update Profile ───────────────────────────────────────────
 export const updateProfile = async (userId, body) => {
   const allowed = ['full_name', 'avatar_url'];
-  const updates = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.includes(k)));
+  const updates = Object.fromEntries(
+    Object.entries(body).filter(([k]) => allowed.includes(k))
+  );
 
   const { data, error } = await supabaseAdmin
     .from('profiles')
@@ -112,11 +123,15 @@ export const updateProfile = async (userId, body) => {
 // ── Change Password ──────────────────────────────────────────
 export const changePassword = async (userId, newPassword) => {
   if (!newPassword || newPassword.length < 6)
-    throw Object.assign(new Error('Password must be at least 6 characters'), { status: 400 });
+    throw Object.assign(
+      new Error('Password must be at least 6 characters'),
+      { status: 400 }
+    );
 
   const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
     password: newPassword,
   });
+
   if (error) throw Object.assign(new Error(error.message), { status: 400 });
   return { message: 'Password updated successfully' };
 };

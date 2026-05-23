@@ -1,25 +1,27 @@
 import { supabaseAdmin } from '../lib/supabaseClient.js';
 
-// ── protect ─────────────────────────────────────────────────
-// Validates the Supabase JWT from Authorization header.
-// Attaches req.user = { id, email, ...metadata }
+// ── protect ──────────────────────────────────────────────────
 export const protect = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Missing or invalid Authorization header' });
     }
 
     const token = authHeader.split(' ')[1];
+    if (!token || token === 'null' || token === 'undefined') {
+      return res.status(401).json({ error: 'Invalid token value' });
+    }
 
-    // verify JWT with Supabase — returns the user if valid
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
 
     if (error || !user) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
+      console.warn('[Auth] Token validation failed:', error?.message);
+      return res.status(401).json({ error: 'Invalid or expired token. Please sign in again.' });
     }
 
-    req.user = user; // { id, email, user_metadata, ... }
+    req.user = user;
     next();
   } catch (err) {
     next(err);
@@ -27,7 +29,6 @@ export const protect = async (req, res, next) => {
 };
 
 // ── getUserId ────────────────────────────────────────────────
-// Helper to pull the user's UUID from req.user inside controllers
 export const getUserId = (req) => {
   if (!req.user?.id) throw Object.assign(new Error('Unauthorized'), { status: 401 });
   return req.user.id;
