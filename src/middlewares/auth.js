@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../lib/supabaseClient.js';
+import { supabaseClient } from '../lib/supabaseClient.js';  // ✅ Correct
 
 // ── protect ──────────────────────────────────────────────────
 export const protect = async (req, res, next) => {
