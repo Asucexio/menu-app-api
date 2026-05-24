@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
-import { chapaInitialize, chapaVerify } from '../lib/chapaClient.js';
-import supabase from '../lib/supabaseClient.js';
+import { chapaInitialize, chapaVerify } from '../lib/chapaclient.js';
+import supabase from '../lib/supabaseclient.js';
 
 const PLANS = {
   basic: { amount: 199, label: 'Basic Plan', durationDays: 30 },
