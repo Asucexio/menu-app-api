@@ -17,23 +17,44 @@ export const initializePayment = async (ownerId, body) => {
   const txRef = `qrmenu-${plan}-${uuid()}`;
   const { amount, label } = PLANS[plan];
 
+  const apiBase = process.env.API_URL || process.env.RENDER_EXTERNAL_URL;
+  const clientBase = process.env.CLIENT_URL;
+  if (!apiBase || !clientBase) {
+    throw Object.assign(
+      new Error('Missing API_URL/RENDER_EXTERNAL_URL or CLIENT_URL environment variables'),
+      { status: 500 }
+    );
+  }
+
   const result = await chapaInitialize({
     amount, currency: 'ETB', email, first_name, last_name,
     tx_ref: txRef,
-    callback_url: `${process.env.API_URL}/api/webhooks/chapa`,
-    return_url:   `${process.env.CLIENT_URL}/payment?tx_ref=${txRef}`,
+    callback_url: `${apiBase}/api/webhooks/chapa`,
+    return_url:   `${clientBase}/payment?tx_ref=${txRef}`,
     customization: { title: `QR Menu`, description: '30-day subscription' },
   });
 
-  if (result.status !== 'success')
-    throw Object.assign(new Error(result.message || 'Chapa init failed'), { status: 400 });
+  if (result.status !== 'success') {
+    const rawMessage = result?.message;
+    const message =
+      typeof rawMessage === 'string'
+        ? rawMessage
+        : rawMessage?.message || JSON.stringify(rawMessage || result);
+    throw Object.assign(new Error(`Chapa init failed: ${message}`), { status: 400 });
+  }
 
-  await supabase.from('subscriptions')
+  const { error: cancelErr } = await supabase.from('subscriptions')
     .update({ status: 'cancelled' })
     .eq('owner_id', ownerId).eq('status', 'pending');
+  if (cancelErr) {
+    throw Object.assign(new Error(`Failed to cancel pending subscriptions: ${cancelErr.message}`), { status: 500 });
+  }
 
-  await supabase.from('subscriptions')
+  const { error: insertErr } = await supabase.from('subscriptions')
     .insert({ owner_id: ownerId, plan, status: 'pending', chapa_tx_ref: txRef });
+  if (insertErr) {
+    throw Object.assign(new Error(`Failed to create pending subscription: ${insertErr.message}`), { status: 500 });
+  }
 
   return { checkout_url: result.data.checkout_url, tx_ref: txRef };
 };
@@ -58,29 +79,7 @@ export const verifyPayment = async (txRef) => {
 
   // Step 2: already active — return immediately
   if (sub.status === 'active') {
-    const { data: fresh } = await supabase
-      .from('subscriptions').select('expires_at').eq('id', sub.id).single();
-    return { verified: true, status: 'active', expires_at: fresh?.expires_at };
-  }
-
-  // Step 3: ask Chapa
-  let chapaStatus = null;
-  try {
-    const result = await chapaVerify(txRef);
-    chapaStatus = result?.data?.status;
-    console.log('[Verify] Chapa status:', chapaStatus);
-  } catch (err) {
-    console.warn('[Verify] Chapa call failed:', err.message);
-  }
-
-  // Step 4: activate if Chapa confirms
-  if (chapaStatus === 'success') {
-    const durationDays = PLANS[sub.plan]?.durationDays || 30;
-    const expiresAt = new Date(
-      Date.now() + durationDays * 24 * 60 * 60 * 1000
-    ).toISOString();
-
-    await supabase.from('subscriptions')
+    const { data: fresh } = await supabase.from('subscriptions')
       .update({
         status: 'active',
         started_at: new Date().toISOString(),
