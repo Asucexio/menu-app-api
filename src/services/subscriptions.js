@@ -60,8 +60,8 @@ export const initializePayment = async (ownerId, body) => {
     callback_url: callbackUrl,
     return_url:   returnUrl,
     customization: {
-      title: `QR Menu — ${label}`,
-      description: '30-day subscription',
+        title: 'QR Menu',
+      description: `${label}`,
     },
   });
 
