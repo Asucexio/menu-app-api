@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../lib/supabaseClient.js';
+import { supabaseAdmin } from '../lib/supabaseclient.js';
 
 // ── Sign Up ──────────────────────────────────────────────────
 export const signUp = async ({ email, password, full_name }) => {

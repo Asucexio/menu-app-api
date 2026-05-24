@@ -1,4 +1,4 @@
- import supabase from '../lib/supabaseClient.js';
+ import supabase from '../lib/supabaseclient.js';
 
 const makeSlug = (name) =>
   name.toLowerCase().trim()

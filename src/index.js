@@ -10,9 +10,9 @@ import menuRoutes         from './routes/menus.js';
 import categoryRoutes     from './routes/categories.js';
 import itemRoutes         from './routes/items.js';
 import subscriptionRoutes from './routes/subscriptions.js';
-import qrRoutes           from './routes/qrCodes.js';
+import qrRoutes           from './routes/qrcodes.js';
 import chapaWebhook       from './webhooks/chapa.js';
-import { errorHandler }   from './middlewares/errorHandler.js';
+import { errorHandler }   from './middlewares/errorhandler.js';
 
 const app = express();
 
@@ -36,7 +36,6 @@ app.use(cors({
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(morgan('dev'));
-
 // ── Chapa webhook needs raw body BEFORE json parser ──────────
 app.use('/api/webhooks/chapa', express.raw({ type: '*/*' }), chapaWebhook);
 

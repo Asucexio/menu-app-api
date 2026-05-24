@@ -1,4 +1,4 @@
-import supabase from '../lib/supabaseClient.js';
+import supabase from '../lib/supabaseclient.js';
 
 const assertMenuOwner = async (ownerId, menuId) => {
   const { data } = await supabase

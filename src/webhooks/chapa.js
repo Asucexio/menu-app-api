@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import supabase from '../lib/supabaseClient.js';
+import supabase from '../lib/supabaseclient.js';
 
 const r = Router();
 

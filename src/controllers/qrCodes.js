@@ -1,4 +1,4 @@
-import * as svc from '../services/qrCodes.js';
+import * as svc from '../services/qrcodes.js';
 import { getUserId } from '../middlewares/auth.js';
 
 export const generate = async (req, res, next) => {

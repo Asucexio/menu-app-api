@@ -1,4 +1,4 @@
-import supabase from '../lib/supabaseClient.js';
+import supabase from '../lib/supabaseclient.js';
 import { getUserId } from './auth.js';
 
 export const requireSubscription = async (req, res, next) => {
