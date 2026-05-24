@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
-import { chapaInitialize, chapaVerify } from '../lib/chapaclient.js';
-import supabase from '../lib/supabaseclient.js';
+import { chapaInitialize, chapaVerify } from '../lib/chapaClient.js';
+import supabase from '../lib/supabaseClient.js';
 
 const PLANS = {
   basic: { amount: 199, label: 'Basic Plan', durationDays: 30 },
@@ -9,61 +9,84 @@ const PLANS = {
 
 export const initializePayment = async (ownerId, body) => {
   const { plan, email, first_name, last_name } = body;
+
   if (!PLANS[plan])
     throw Object.assign(new Error('Invalid plan. Choose basic or pro'), { status: 400 });
   if (!email || !first_name || !last_name)
     throw Object.assign(new Error('email, first_name and last_name are required'), { status: 400 });
 
-  const txRef = `qrmenu-${plan}-${uuid()}`;
-  const { amount, label } = PLANS[plan];
+  // ── Validate env vars before calling Chapa ──────────────────
+  const clientUrl = (process.env.CLIENT_URL || '').replace(/\/$/, '');
+  const apiUrl    = (process.env.API_URL    || '').replace(/\/$/, '');
 
-  const apiBase = process.env.API_URL || process.env.RENDER_EXTERNAL_URL;
-  const clientBase = process.env.CLIENT_URL;
-  if (!apiBase || !clientBase) {
+  if (!clientUrl || !clientUrl.startsWith('http')) {
     throw Object.assign(
-      new Error('Missing API_URL/RENDER_EXTERNAL_URL or CLIENT_URL environment variables'),
+      new Error(
+        `CLIENT_URL is not set or invalid: "${clientUrl}". ` +
+        `Add it in your Render environment variables. ` +
+        `Example: https://your-app.vercel.app`
+      ),
       { status: 500 }
     );
   }
 
+  if (!apiUrl || !apiUrl.startsWith('http')) {
+    throw Object.assign(
+      new Error(
+        `API_URL is not set or invalid: "${apiUrl}". ` +
+        `Add it in your Render environment variables. ` +
+        `Example: https://your-api.onrender.com`
+      ),
+      { status: 500 }
+    );
+  }
+
+  const txRef = `qrmenu-${plan}-${uuid()}`;
+  const { amount, label } = PLANS[plan];
+
+  const returnUrl   = `${clientUrl}/payment?tx_ref=${txRef}`;
+  const callbackUrl = `${apiUrl}/api/webhooks/chapa`;
+
+  console.log('[Subscription] return_url  :', returnUrl);
+  console.log('[Subscription] callback_url:', callbackUrl);
+
   const result = await chapaInitialize({
-    amount, currency: 'ETB', email, first_name, last_name,
+    amount,
+    currency: 'ETB',
+    email,
+    first_name,
+    last_name,
     tx_ref: txRef,
-    callback_url: `${apiBase}/api/webhooks/chapa`,
-    return_url:   `${clientBase}/payment?tx_ref=${txRef}`,
-    customization: { title: `QR Menu`, description: '30-day subscription' },
+    callback_url: callbackUrl,
+    return_url:   returnUrl,
+    customization: {
+      title: `QR Menu — ${label}`,
+      description: '30-day subscription',
+    },
   });
 
-  if (result.status !== 'success') {
-    const rawMessage = result?.message;
-    const message =
-      typeof rawMessage === 'string'
-        ? rawMessage
-        : rawMessage?.message || JSON.stringify(rawMessage || result);
-    throw Object.assign(new Error(`Chapa init failed: ${message}`), { status: 400 });
-  }
+  if (result.status !== 'success')
+    throw Object.assign(
+      new Error(`Chapa init failed: ${JSON.stringify(result.message || result.validation_errors)}`),
+      { status: 400 }
+    );
 
-  const { error: cancelErr } = await supabase.from('subscriptions')
+  // cancel previous pending
+  await supabase.from('subscriptions')
     .update({ status: 'cancelled' })
-    .eq('owner_id', ownerId).eq('status', 'pending');
-  if (cancelErr) {
-    throw Object.assign(new Error(`Failed to cancel pending subscriptions: ${cancelErr.message}`), { status: 500 });
-  }
+    .eq('owner_id', ownerId)
+    .eq('status', 'pending');
 
-  const { error: insertErr } = await supabase.from('subscriptions')
+  await supabase.from('subscriptions')
     .insert({ owner_id: ownerId, plan, status: 'pending', chapa_tx_ref: txRef });
-  if (insertErr) {
-    throw Object.assign(new Error(`Failed to create pending subscription: ${insertErr.message}`), { status: 500 });
-  }
 
   return { checkout_url: result.data.checkout_url, tx_ref: txRef };
 };
 
-// ── No ownerId required — tx_ref is unique and sufficient ────
+// ── Verify — public, tx_ref is enough ───────────────────────
 export const verifyPayment = async (txRef) => {
   console.log('[Verify] Looking up tx_ref:', txRef);
 
-  // Step 1: find in DB by tx_ref alone
   const { data: sub, error: dbErr } = await supabase
     .from('subscriptions')
     .select('id, plan, status, owner_id')
@@ -77,9 +100,28 @@ export const verifyPayment = async (txRef) => {
 
   console.log('[Verify] DB subscription status:', sub.status);
 
-  // Step 2: already active — return immediately
   if (sub.status === 'active') {
-    const { data: fresh } = await supabase.from('subscriptions')
+    const { data: fresh } = await supabase
+      .from('subscriptions').select('expires_at').eq('id', sub.id).single();
+    return { verified: true, status: 'active', expires_at: fresh?.expires_at };
+  }
+
+  let chapaStatus = null;
+  try {
+    const result = await chapaVerify(txRef);
+    chapaStatus = result?.data?.status;
+    console.log('[Verify] Chapa status:', chapaStatus);
+  } catch (err) {
+    console.warn('[Verify] Chapa call failed:', err.message);
+  }
+
+  if (chapaStatus === 'success') {
+    const durationDays = PLANS[sub.plan]?.durationDays || 30;
+    const expiresAt = new Date(
+      Date.now() + durationDays * 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    await supabase.from('subscriptions')
       .update({
         status: 'active',
         started_at: new Date().toISOString(),
@@ -90,7 +132,6 @@ export const verifyPayment = async (txRef) => {
     return { verified: true, status: 'active', expires_at: expiresAt };
   }
 
-  // Step 5: not confirmed yet
   return {
     verified: false,
     status: chapaStatus || sub.status,
