@@ -38,6 +38,7 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(morgan('dev'));
 // ── Chapa webhook needs raw body BEFORE json parser ──────────
 app.use('/api/webhooks/chapa', express.raw({ type: '*/*' }), chapaWebhook);
+app.use('/webhooks/chapa', express.raw({ type: '*/*' }), chapaWebhook);
 
 // ── Body parsers ─────────────────────────────────────────────
 app.use(express.json());

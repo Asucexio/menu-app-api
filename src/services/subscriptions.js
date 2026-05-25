@@ -146,7 +146,7 @@ export const getSubscriptionStatus = async (ownerId) => {
     .eq('owner_id', ownerId)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybesingle();
 
   if (!data) return { plan: 'free', status: 'inactive', active: false };
   const active = data.status === 'active' && new Date(data.expires_at) > new Date();
