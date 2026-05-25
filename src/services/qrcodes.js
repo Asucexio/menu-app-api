@@ -25,13 +25,21 @@ export const generateQRCode = async (ownerId, menuId) => {
   });
 
   const storagePath = `qr-codes/${menuId}.png`;
+  let imageUrl = `${process.env.API_URL || ''}/api/qr/${menuId}/download`;
+
   const { error: uploadErr } = await supabase.storage
     .from('menu-assets')
     .upload(storagePath, buffer, { contentType: 'image/png', upsert: true });
-  if (uploadErr) throw uploadErr;
 
-  const { data: { publicUrl: imageUrl } } = supabase.storage
-    .from('menu-assets').getPublicUrl(storagePath);
+  if (uploadErr) {
+    const isRlsError = uploadErr.statusCode === '403' || /row-level security policy/i.test(uploadErr.message || '');
+    if (!isRlsError) throw uploadErr;
+    console.warn('[QR] Storage upload blocked by RLS; falling back to download endpoint URL.');
+  } else {
+    const { data } = supabase.storage
+      .from('menu-assets').getPublicUrl(storagePath);
+    imageUrl = data?.publicUrl || imageUrl;
+  }
 
   const { data, error } = await supabase
     .from('qr_codes')
