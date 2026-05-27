@@ -3,8 +3,8 @@ import { chapaInitialize, chapaVerify } from '../lib/chapaclient.js';
 import supabase from '../lib/supabaseclient.js';
 
 const PLANS = {
-  basic: { amount: 199, label: 'Basic Plan', durationDays: 30 },
-  pro:   { amount: 499, label: 'Pro Plan',   durationDays: 30 },
+  basic: { amount: 499, label: 'Basic Plan', durationDays: 30,menuLimit: 1  }, 
+  pro:   { amount: 999, label: 'Pro Plan',   durationDays: 30,menuLimit: 3  }
 };
 
 /**

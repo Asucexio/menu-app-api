@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { protect } from '../middlewares/auth.js';
 import * as ctrl from '../controllers/menus.js';
-import { requireSubscription } from '../middlewares/reqiresubscription.js';
+import { requireSubscription } from '../middlewares/reqireSubscription.js';
 
 const r = Router();
 r.get('/public/:menuId', ctrl.getPublic); // public — customer view

@@ -22,6 +22,37 @@ export const createMenu = async (ownerId, body) => {
   if (!restaurant_id) throw Object.assign(new Error('restaurant_id is required'), { status: 400 });
   await assertRestaurantOwner(ownerId, restaurant_id);
 
+
+  // ── Check subscription menu limit ──────────────────────────
+  const { data: sub } = await supabase
+    .from('subscriptions')
+    .select('plan, status, expires_at')
+    .eq('owner_id', ownerId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  const LIMITS = { basic: 1, pro: 3 , free: 0};
+  const limit = LIMITS[sub?.plan] ?? 0;
+
+  const { count } = await supabase
+    .from('menus')
+    .select('id', { count: 'exact', head: true })
+    .eq('restaurant_id', restaurant_id);
+
+  if ((count ?? 0) >= limit) {
+    throw Object.assign(
+      new Error(
+        sub?.plan === 'basic'
+          ? `Basic plan allows up to ${limit} menus. Upgrade to Pro for unlimited menus.`
+          : `Upgrade to a paid plan to create menus.`
+      ),
+      { status: 403 }
+    );
+  }
+  // ──────────────────────────────────────────────────────────
+
   const { data, error } = await supabase
     .from('menus').insert({ restaurant_id, name: name || 'Main Menu' }).select().single();
   if (error) throw error;
