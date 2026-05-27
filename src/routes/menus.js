@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { protect } from '../middlewares/auth.js';
 import * as ctrl from '../controllers/menus.js';
-import { requireSubscription } from '../middlewares/reqireSubscription.js';
+// BEFORE (wrong — capital S)
+ 
+
+// AFTER (correct — matches actual filename)
+import { requireSubscription } from '../middlewares/reqiresubscription.js';
 
 const r = Router();
 r.get('/public/:menuId', ctrl.getPublic); // public — customer view
