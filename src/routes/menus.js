@@ -6,7 +6,7 @@ import { requireSubscription } from '../middlewares/reqireSubscription.js';
 const r = Router();
 r.get('/public/:menuId', ctrl.getPublic); // public — customer view
 r.use(protect);
-r.post('/',requireSubscription, ctrl.create);
+r.post('/', requireSubscription, ctrl.create);
 r.get('/restaurant/:restaurantId', ctrl.listByRestaurant);
 r.get('/:id',                      ctrl.getOne);
 r.patch('/:id', requireSubscription, ctrl.update);
