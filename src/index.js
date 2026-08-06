@@ -18,8 +18,8 @@ const app = express();
 
 // ── CORS — allow all origins in dev, specific in prod ────────
 const allowedOrigins = process.env.CLIENT_URL
-  ? [process.env.CLIENT_URL, 'https://qr-menu-app-snowy.vercel.app', 'http://127.0.0.1:3000']
-  : [, 'https://qr-menu-app-snowy.vercel.app'];
+  ? [process.env.CLIENT_URL, 'https://hamenu.vercel.app/', 'http://127.0.0.1:3000']
+  : [, 'https://hamenu.vercel.app/'];
 
 app.use(cors({
   origin: (origin, callback) => {

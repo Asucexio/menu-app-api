@@ -9,6 +9,6 @@ r.get('/verify/:txRef', ctrl.verify);
 
 // ── Protected ────────────────────────────────────────────────
 r.post('/initialize', protect, ctrl.initialize);
-r.get('/status',      protect, ctrl.getStatus);
+r.get('/status'      , ctrl.getStatus);
 
 export default r;
